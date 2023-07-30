@@ -1,10 +1,9 @@
 import numpy as np
+import torch
 from torch import optim, nn
-
 from data_provider import open_dataset
 from parapred.dataloader import ABDataset, train_test_split, ABloader
 from parapred.pytorch_model import ab_seq_model, train
-from torchsummary import summary
 
 
 def single_run(dataset_file):
@@ -30,44 +29,15 @@ def single_run(dataset_file):
     example_weight = np.squeeze((lbls_train * 1.7 + 1) * masks_train)
     test_ex_weight = np.squeeze((lbls_test * 1.7 + 1) * masks_test)
 
-    rate_schedule = lambda e: 0.001 if e >= 10 else 0.01
+    torch.save(model.state_dict(), "precomputed/sabdab.pth")
 
-    # history = model.fit([cdrs_train, np.squeeze(masks_train)],
-    #                     lbls_train, batch_size=32, epochs=150,
-    #                     # Just a trial, not actual evaluation.
-    #                     validation_data=([cdrs_test, np.squeeze(masks_test)],
-    #                                      lbls_test, test_ex_weight),
-    #                     sample_weight=example_weight,
-    #                     callbacks=[LearningRateScheduler(rate_schedule),
-    #                                EarlyStopping(verbose=1, patience=3)])
-
-    model.save_weights("sabdab.h5")
-    probs_test = model.predict([cdrs_test, np.squeeze(masks_test)])
+    probs_test = predict(test_data)
 
     test_seq_lens = np.sum(np.squeeze(masks_test), axis=1)
     probs_flat = flatten_with_lengths(probs_test, test_seq_lens)
     lbls_flat = flatten_with_lengths(lbls_test, test_seq_lens)
 
     compute_classifier_metrics([lbls_flat], [probs_flat])
-
-
-def full_run(dataset, out_weights="weights.h5"):
-    cache_file = dataset.split("/")[-1] + ".p"
-    dataset = open_dataset(dataset, dataset_cache=cache_file)
-    # print(dataset)
-    cdrs, lbls, masks = dataset["cdrs"], dataset["lbls"], dataset["masks"]
-
-    sample_weight = np.squeeze((lbls * 1.7 + 1) * masks)
-    model = ab_seq_model()
-    #
-    # rate_schedule = lambda e: 0.001 if e >= 10 else 0.01
-
-    model.fit([cdrs, np.squeeze(masks)],
-              lbls, batch_size=32, epochs=18,
-              sample_weight=sample_weight,
-              callbacks=[LearningRateScheduler(rate_schedule)])
-
-    model.save_weights(out_weights)
 
 
 def youden_j_stat(fpr, tpr, thresholds):
@@ -145,9 +115,5 @@ def flatten_with_lengths(matrix, lengths):
     return np.concatenate(seqs)
 
 
-def main():
-    single_run("data/dataset.csv")
-
-
 if __name__ == "__main__":
-    main()
+    single_run("data/dataset.csv")

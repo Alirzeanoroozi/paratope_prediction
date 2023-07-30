@@ -37,7 +37,7 @@ class ABDataset(Dataset):
 
 
 def ABloader(training_data, test_data):
-    return DataLoader(training_data, batch_size=64, shuffle=True), DataLoader(test_data, batch_size=64, shuffle=True)
+    return DataLoader(training_data, batch_size=64, shuffle=True, drop_last=True), DataLoader(test_data, batch_size=64, shuffle=True, drop_last=True)
 
 
 # class MaskingByLambda(nn.Module):

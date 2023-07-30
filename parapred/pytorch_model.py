@@ -68,21 +68,21 @@ def train(model, optimizer, loss_fn, train_dl, val_dl, epochs=20, device='cpu'):
         for batch in train_dl:
             optimizer.zero_grad()
 
-            x = batch[0].squeeze(1).type(torch.DoubleTensor)
-            y = batch[2].squeeze(1)
-            print(x.dtype)
+            x = batch[0].squeeze(1).float()
+            y = batch[2].squeeze(1).float()
 
             yhat = model(x)
+            yhat = yhat.reshape(64, 32, 1)
             loss = loss_fn(yhat, y)
 
             loss.backward()
             optimizer.step()
 
             train_loss += loss.data.item() * x.size(0)
-            num_train_correct += (torch.max(yhat, 1)[1] == y).sum().item()
-            num_train_examples += x.shape[0]
+            # num_train_correct += (torch.max(yhat, 1)[1] == y).sum().item()
+            # num_train_examples += x.shape[0]
 
-        train_acc = num_train_correct / num_train_examples
+        # train_acc = num_train_correct / num_train_examples
         train_loss = train_loss / len(train_dl.dataset)
 
         # --- EVALUATE ON VALIDATION SET -------------------------------------
@@ -92,25 +92,26 @@ def train(model, optimizer, loss_fn, train_dl, val_dl, epochs=20, device='cpu'):
         num_val_examples = 0
 
         for batch in val_dl:
-            x = batch[0]
-            y = batch[2]
+            x = batch[0].squeeze(1).float()
+            y = batch[2].squeeze(1).float()
             yhat = model(x)
+            yhat = yhat.reshape(64, 32, 1)
             loss = loss_fn(yhat, y)
 
             val_loss += loss.data.item() * x.size(0)
-            num_val_correct += (torch.max(yhat, 1)[1] == y).sum().item()
-            num_val_examples += y.shape[0]
+            # num_val_correct += (torch.max(yhat, 1)[1] == y).sum().item()
+            # num_val_examples += y.shape[0]
 
-        val_acc = num_val_correct / num_val_examples
+        # val_acc = num_val_correct / num_val_examples
         val_loss = val_loss / len(val_dl.dataset)
 
         print('Epoch %3d/%3d, train loss: %5.2f, train acc: %5.2f, val loss: %5.2f, val acc: %5.2f' % \
-              (epoch + 1, epochs, train_loss, train_acc, val_loss, val_acc))
+              (epoch + 1, epochs, train_loss, 0, val_loss, 0))
 
         history['loss'].append(train_loss)
         history['val_loss'].append(val_loss)
-        history['acc'].append(train_acc)
-        history['val_acc'].append(val_acc)
+        # history['acc'].append(train_acc)
+        # history['val_acc'].append(val_acc)
 
     # END OF TRAINING LOOP
 
