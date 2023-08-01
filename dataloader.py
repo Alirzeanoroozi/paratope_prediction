@@ -38,28 +38,3 @@ class ABDataset(Dataset):
 
 def ABloader(training_data, test_data):
     return DataLoader(training_data, batch_size=64, shuffle=True, drop_last=True), DataLoader(test_data, batch_size=64, shuffle=True, drop_last=True)
-
-
-# class MaskingByLambda(nn.Module):
-#     def __init__(self, func):
-#         super(MaskingByLambda, self).__init__()
-#         self.mask_func = func
-#
-#     def forward(self, x, mask=None):
-#         exd_mask = torch.unsqueeze(self.mask_func(x, mask), dim=-1)
-#         return x * exd_mask.float()
-#
-#
-# def mask_by_input(tensor):
-#     return lambda input, mask: tensor
-#
-#
-# class MaskedConvolution1D(nn.Conv1d):
-#     def __init__(self, *args, **kwargs):
-#         super(MaskedConvolution1D, self).__init__(*args, **kwargs)
-#
-#     def forward(self, x, mask=None):
-#         assert mask is not None
-#         mask = torch.unsqueeze(mask, dim=-1)
-#         x = super(MaskedConvolution1D, self).forward(x)
-#         return x * mask.float()

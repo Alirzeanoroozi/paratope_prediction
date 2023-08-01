@@ -1,11 +1,3 @@
-import numpy as np
-import torch
-from torch import optim, nn
-from data_provider import open_dataset
-from parapred.dataloader import ABDataset, train_test_split, ABloader
-from parapred.pytorch_model import ab_seq_model, train
-
-
 def single_run(dataset_file):
     dataset = open_dataset(dataset_file)
 
@@ -25,9 +17,6 @@ def single_run(dataset_file):
           loss_fn=loss_function,
           train_dl=train_dataloader,
           val_dl=test_dataloader)
-
-    example_weight = np.squeeze((lbls_train * 1.7 + 1) * masks_train)
-    test_ex_weight = np.squeeze((lbls_test * 1.7 + 1) * masks_test)
 
     torch.save(model.state_dict(), "precomputed/sabdab.pth")
 
@@ -113,6 +102,76 @@ def flatten_with_lengths(matrix, lengths):
         seq = example[:lengths[i]]
         seqs.append(seq)
     return np.concatenate(seqs)
+
+
+def run_cv(dataset, output_folder, num_iters=10):
+    cache_file = dataset.split("/")[-1] + ".p"
+    dataset = open_dataset(dataset, dataset_cache=cache_file)
+
+    makedirs(output_folder + "/weights", exist_ok=True)
+    for i in range(num_iters):
+        print("Crossvalidation run", i+1)
+        output_file = "{}/run-{}.p".format(output_folder, i)
+        weights_template = output_folder + "/weights/run-" + str(i) + "-fold-{}.h5"
+        kfold_cv_eval(ab_seq_model, dataset, output_file, weights_template, seed=i)
+
+
+def process_cv_results(cv_result_folder, abip_result_folder, cv_num_iters=10):
+    for i, loop in enumerate(["H1", "H2", "H3", "L1", "L2", "L3"]):
+        print("Classifier metrics for loop type", loop)
+        labels, probs = open_crossval_results(cv_result_folder, cv_num_iters, i)
+        compute_classifier_metrics(labels, probs)
+
+    # Plot PR curves
+    print("Plotting PR curves")
+    labels, probs = open_crossval_results(cv_result_folder, cv_num_iters)
+    labels_abip, probs_abip = open_crossval_results(abip_result_folder, 10)
+
+    fig = plot_pr_curve(labels, probs, colours=("#0072CF", "#68ACE5"),
+                        label="Parapred")
+    fig = plot_pr_curve(labels_abip, probs_abip, colours=("#D6083B", "#EB99A9"),
+                        label="Parapred using ABiP data", plot_fig=fig)
+    fig = plot_abip_pr(fig)
+    fig.savefig("pr.eps")
+
+    # Computing overall classifier metrics
+    print("Computing classifier metrics")
+    compute_classifier_metrics(labels, probs)
+
+
+def plot_dataset_fraction_results(results):
+    print("Plotting PR curves")
+    colours = [("#0072CF", "#68ACE5"),
+               ("#EA7125", "#F3BD48"),
+               ("#55A51C", "#AAB300"),
+               ("#D6083B", "#EB99A9")]
+
+    fig = None
+    for i, (file, descr) in enumerate(results):
+        labels, probs = open_crossval_results(file, 10)
+        fig = plot_pr_curve(labels, probs, colours=colours[i], plot_fig=fig, label="Parapred ({})".format(descr))
+
+    fig.savefig("fractions-pr.eps")
+
+
+def show_binding_profiles(dataset, run):
+    labels, probs = open_crossval_results(run, flatten_by_lengths=False)
+    labels = labels[0]  # Labels are constant, any of the 10 runs would do
+    probs = np.stack(probs).mean(axis=0)  # Mean binding probability across runs
+
+    contact = binding_profile(dataset, labels)
+    print("Contact per-residue binding profile:")
+    total = sum(list(contact.values()))
+    contact = {k: v / total for k, v in contact.items()}
+    print(contact)
+
+    parapred = binding_profile(dataset, probs)
+    print("Model's predictions' per-residue binding profile:")
+    total = sum(list(parapred.values()))
+    parapred = {k: v / total for k, v in parapred.items()}
+    print(parapred)
+
+    plot_binding_profiles(contact, parapred)
 
 
 if __name__ == "__main__":

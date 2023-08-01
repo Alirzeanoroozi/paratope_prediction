@@ -154,3 +154,23 @@ def get_cdrs_and_contact_info(ag_search, ab_h_chain, ab_l_chain, sequences, pdb)
         return None
 
     return cdrs, contact, (num_in_contact, num_residues)
+
+
+def export_sequences(dataset):
+    for ag_search, ab_h_chain, ab_l_chain, _, seqs, pdb in load_chains(dataset):
+        res = get_cdrs_and_contact_info(ag_search, ab_h_chain, ab_l_chain, seqs, pdb)
+        if res is None:
+            continue
+
+        cdrs, contact, _ = res
+        for cdr_name in ["H1", "H2", "H3", "L1", "L2", "L3"]:
+            chain_id = pdb[1] if cdr_name.startswith("H") else pdb[2]
+            print("> {} {} {}".format(pdb[0], chain_id, cdr_name))
+            print(" ".join(str(r[2][0])+r[2][1] for r in cdrs[cdr_name]))
+            print("".join(r[0] for r in cdrs[cdr_name]))
+            print("".join('1' if c else '0' for c in contact[cdr_name]))
+
+
+if __name__ == "__main__":
+    export_sequences("data/dataset.csv")
+
