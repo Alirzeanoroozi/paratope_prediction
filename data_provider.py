@@ -22,14 +22,17 @@ def open_dataset(summary_file, dataset_cache="processed-dataset.p"):
 
 
 def compute_entries(summary_file):
-    cdrs, lbls, masks, cl_w = process_dataset(summary_file)
+    cdrs, lbls, cl_w = process_dataset(summary_file)
     return {
-        "cdrs": cdrs,
-        "lbls": lbls,
-        "masks": masks,
+        "cdrs": flatten(cdrs),
+        "lbls": flatten(lbls),
         "max_cdr_len": MAX_CDR_LEN,
         "pos_class_weight": cl_w
     }
+
+
+def flatten(l):
+    return [item for sublist in l for item in sublist]
 
 
 def process_dataset(summary_file):
@@ -38,7 +41,6 @@ def process_dataset(summary_file):
 
     all_cdrs = []
     all_lbls = []
-    all_masks = []
 
     for ag_search, ab_h_chain, ab_l_chain, _, seqs, pdb in load_chains(summary_file):
         print("Processing PDB: ", pdb)
@@ -47,20 +49,15 @@ def process_dataset(summary_file):
         if res is None:
             continue
 
-        cdrs, lbls, cdr_mask, (nic, nr) = res
+        cdrs, lbls, (nic, nr) = res
 
         num_in_contact += nic
         num_residues += nr
 
         all_cdrs.append(cdrs)
         all_lbls.append(lbls)
-        all_masks.append(cdr_mask)
 
-    cdrs = np.concatenate(all_cdrs, axis=0)
-    lbls = np.concatenate(all_lbls, axis=0)
-    masks = np.concatenate(all_masks, axis=0)
-
-    return cdrs, lbls, masks, num_residues / num_in_contact
+    return all_cdrs, all_lbls, num_residues / num_in_contact
 
 
 def load_chains(dataset_desc_filename, sequence_cache_file="precomputed/downloaded_seqs.p"):
@@ -101,7 +98,6 @@ def process_chains(ag_search, ab_h_chain, ab_l_chain, sequences, pdb, max_cdr_le
 
     cdr_mats = []
     cont_mats = []
-    cdr_masks = []
 
     if results is None:
         return None
@@ -111,26 +107,14 @@ def process_chains(ag_search, ab_h_chain, ab_l_chain, sequences, pdb, max_cdr_le
     for cdr_name in ["H1", "H2", "H3", "L1", "L2", "L3"]:
         # Convert Residue entities to amino acid sequences
         cdr_chain = [r[0] for r in cdrs[cdr_name]]
-
-        cdr_mat = seq_to_one_hot(cdr_chain)
-        cdr_mat_pad = np.zeros((max_cdr_len, NUM_FEATURES))
-        cdr_mat_pad[:cdr_mat.shape[0], :] = cdr_mat
-        cdr_mats.append(cdr_mat_pad)
+        cdr_mats.append(cdr_chain)
 
         cont_mat = np.array(contact[cdr_name], dtype=float)
-        cont_mat_pad = np.zeros((max_cdr_len, 1))
-        cont_mat_pad[:cont_mat.shape[0], 0] = cont_mat
+        cont_mat_pad = np.zeros(max_cdr_len)
+        cont_mat_pad[:cont_mat.shape[0]] = cont_mat
         cont_mats.append(cont_mat_pad)
 
-        cdr_mask = np.zeros((max_cdr_len, 1), dtype=int)
-        cdr_mask[:len(cdr_chain), 0] = 1
-        cdr_masks.append(cdr_mask)
-
-    cdrs = np.stack(cdr_mats)
-    lbls = np.stack(cont_mats)
-    masks = np.stack(cdr_masks)
-
-    return cdrs, lbls, masks, counters
+    return cdr_mats, cont_mats, counters
 
 
 def get_cdrs_and_contact_info(ag_search, ab_h_chain, ab_l_chain, sequences, pdb):
@@ -171,6 +155,26 @@ def export_sequences(dataset):
             print("".join('1' if c else '0' for c in contact[cdr_name]))
 
 
+def find_cdr(cdrs):
+    for i, ab in enumerate(cdrs):
+        for j, cdr in enumerate(ab):
+            if cdr == list("GVNTFGLY"):
+                return i, j
+
+
 if __name__ == "__main__":
-    export_sequences("data/dataset.csv")
+    df = open_dataset("data/dataset.csv")
+    # print(df['cdrs'][0])
+    # i = df['cdrs'].index(list("GVNTFGLY"))
+    # print(i)
+    #
+    print(find_cdr(df['cdrs']))
+
+    for c, l in zip(df['cdrs'][0], df['lbls'][0]):
+        # l = l.tolist()
+        print("".join(c))
+        # print(l)
+        print("".join(['0' if l0 == 0 else '1' for l0 in l]))
+    # exit()
+    # export_sequences("data/dataset.csv")
 

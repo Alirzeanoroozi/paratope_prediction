@@ -1,14 +1,11 @@
-import json
 import torch
 from cnn import generate_mask
 from preprocessing import encode_batch
-from pytorch_model import Parapred, clean_output
-
-MAX_PARAPRED_LEN = 40
+from pytorch_model import Parapred, clean_output, PARAPRED_MAX_LEN
 
 
-def predict(cdr, output="output.json"):
-    sequences, lengths = encode_batch([cdr], max_length=MAX_PARAPRED_LEN)
+def predict(cdrs):
+    sequences, lengths = encode_batch(cdrs, max_length=PARAPRED_MAX_LEN)
 
     # Generate a mask for the input
     m = generate_mask(sequences, sequence_lengths=lengths)
@@ -21,17 +18,35 @@ def predict(cdr, output="output.json"):
     with torch.no_grad():
         probabilities = p(sequences, m, lengths)
 
-    # Linearise probabilities for viewing
-    out = {}
-    clean = clean_output(probabilities, lengths[0]).tolist()
-
-    i_prob = [round(_, 5) for i, _ in enumerate(clean)]
-    seq_to_prob = list(zip(cdr, i_prob))
-    out[cdr] = seq_to_prob
-
-    with open(output, "w") as jason:
-        json.dump(out, jason)
+    return probabilities.squeeze(2).type(torch.float64)
 
 
 if __name__ == "__main__":
-    predict("GVNTFGLY")
+    print(predict(["YCQHFYIYPYTFG", "GVNTFGLY", "YPGRGT"]))
+
+
+# tensor([[0.1975, 0.2226, 0.3391, 0.4048, 0.4451, 0.4627, 0.4134, 0.4476, 0.3792,
+#          0.4062, 0.3191, 0.2645, 0.1421, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
+#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
+#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359],
+#         [0.1036, 0.1938, 0.2567, 0.2908, 0.2975, 0.2317, 0.2661, 0.2269, 0.0359,
+#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
+#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
+#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359],
+#         [0.1795, 0.1900, 0.2157, 0.3055, 0.2101, 0.1784, 0.0359, 0.0359, 0.0359,
+#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
+#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
+#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359]], dtype=torch.float64)
+
+# tensor([[0.0685, 0.0134, 0.0561, 0.0507, 0.9299, 0.9437, 0.8590, 0.9153, 0.1119,
+#          0.7351, 0.0098, 0.0064, 0.0034, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
+#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
+#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775],
+#         [0.1212, 0.3969, 0.8606, 0.8883, 0.9034, 0.7356, 0.1559, 0.8118, 0.4775,
+#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
+#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
+#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775],
+#         [0.2265, 0.0040, 0.0916, 0.4299, 0.3625, 0.3892, 0.4775, 0.4775, 0.4775,
+#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
+#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
+#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775]], dtype=torch.float64)

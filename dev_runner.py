@@ -1,14 +1,23 @@
+import torch
+from torch import optim, nn
+
+from data_provider import open_dataset
+from dataloader import train_test_split, ABDataset, ABloader
+from main import predict
+from pytorch_model import Parapred, train, evaluate
+
+
 def single_run(dataset_file):
     dataset = open_dataset(dataset_file)
 
-    cdrs_test, cdrs_train, lbls_test, lbls_train, masks_test, masks_train = train_test_split(dataset)
+    cdrs_test, cdrs_train, lbls_test, lbls_train = train_test_split(dataset)
 
-    train_data = ABDataset(cdrs_train, masks_train, lbls_train)
-    test_data = ABDataset(cdrs_test, masks_test, lbls_test)
+    train_data = ABDataset(cdrs_train, lbls_train)
+    test_data = ABDataset(cdrs_test, lbls_test)
 
     train_dataloader, test_dataloader = ABloader(train_data, test_data)
 
-    model = ab_seq_model()
+    model = Parapred()
     optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
     loss_function = nn.BCELoss()
 
@@ -20,13 +29,14 @@ def single_run(dataset_file):
 
     torch.save(model.state_dict(), "precomputed/sabdab.pth")
 
-    probs_test = predict(test_data)
+    probs_test = evaluate(model, test_data)
 
-    test_seq_lens = np.sum(np.squeeze(masks_test), axis=1)
-    probs_flat = flatten_with_lengths(probs_test, test_seq_lens)
-    lbls_flat = flatten_with_lengths(lbls_test, test_seq_lens)
-
-    compute_classifier_metrics([lbls_flat], [probs_flat])
+    print(probs_test)
+    # test_seq_lens = np.sum(np.squeeze(masks_test), axis=1)
+    # probs_flat = flatten_with_lengths(probs_test, test_seq_lens)
+    # lbls_flat = flatten_with_lengths(lbls_test, test_seq_lens)
+    #
+    # compute_classifier_metrics([lbls_flat], [probs_flat])
 
 
 def youden_j_stat(fpr, tpr, thresholds):
