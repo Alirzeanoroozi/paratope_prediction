@@ -27,7 +27,7 @@ class Masked1dConvolution(nn.Module):
         self.output_dim = input_dim if output_dim is None else output_dim
 
         self.in_channels = in_channels
-        self.out_channels = out_channels if out_channels is None else out_channels
+        self.out_channels = in_channels if out_channels is None else out_channels
 
         # Determine the padding required for keeping the same sequence length
         assert dilation >= 1 and stride >= 1, "Dilation and stride must be >= 1."
@@ -38,7 +38,7 @@ class Masked1dConvolution(nn.Module):
 
         self.conv = nn.Conv1d(
             in_channels,
-            out_channels,
+            self.out_channels,
             self.kernel_size,
             padding=padding)
 
@@ -94,7 +94,7 @@ def generate_mask(input_tensor: torch.Tensor, sequence_lengths: torch.LongTensor
 
     mask = torch.ones_like(input_tensor, dtype = torch.bool)
     for i, length in enumerate(sequence_lengths):
-        mask[i][:, length:] = False
+        mask[i][length:, :] = False
 
     return mask
 

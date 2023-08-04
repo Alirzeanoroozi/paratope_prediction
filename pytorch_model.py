@@ -1,10 +1,10 @@
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from cnn import Masked1dConvolution, generate_mask
 import time
 
+# from evaluation import compute_classifier_metrics
 from preprocessing import encode_batch
 
 # accepts CDRs up to length 28 + 2 residues either side
@@ -21,17 +21,14 @@ Treshold = .73
 
 class Parapred(nn.Module):
     def __init__(self,
-                 input_dim=PARAPRED_MAX_LEN,
-                 output_dim=PARAPRED_MAX_LEN,
-                 n_channels=PARAPRED_N_FEATURES,
+                 input_dim=PARAPRED_N_FEATURES,
+                 n_channels=PARAPRED_MAX_LEN,
                  kernel_size=PARAPRED_KERNEL_SIZE,
                  n_hidden_cells=256):
         super().__init__()
-        self.mconv = Masked1dConvolution(input_dim, in_channels=n_channels, output_dim=output_dim,
-                                         out_channels=n_channels, kernel_size=kernel_size)
+        self.mconv = Masked1dConvolution(input_dim, in_channels=n_channels, kernel_size=kernel_size)
         self.elu = nn.ELU()
-        self.lstm = nn.LSTM(input_size=n_channels, hidden_size=n_hidden_cells, batch_first=True, bidirectional=True)
-
+        self.lstm = nn.LSTM(input_size=input_dim, hidden_size=n_hidden_cells, batch_first=True, bidirectional=True)
         self.fc = nn.Linear(n_hidden_cells * 2, 1)
         self.sigmoid = nn.Sigmoid()
 
@@ -46,9 +43,10 @@ class Parapred(nn.Module):
         """
         # residual connection following ELU
         o = input_tensor + self.elu(self.mconv(input_tensor, mask))
+        # o = self.elu(self.mconv(input_tensor, mask))
 
         # Packing sequences to remove padding
-        packed_seq = pack_padded_sequence(o.permute(0, 2, 1), lengths, batch_first=True, enforce_sorted=False)
+        packed_seq = pack_padded_sequence(o, lengths, batch_first=True, enforce_sorted=False)
         o_packed, (h, c) = self.lstm(packed_seq)
 
         # Re-pad sequences before prediction of probabilities
@@ -72,7 +70,7 @@ def clean_output(output_tensor: torch.Tensor, sequence_length: int) -> torch.Ten
     return output_tensor[:sequence_length].view(-1)
 
 
-def train(model, optimizer, loss_fn, train_dl, val_dl, epochs=20):
+def train(model, optimizer, loss_fn, train_dl, val_dl, epochs=200):
     history = {'loss': [], 'val_loss': [], 'acc': [], 'val_acc': []}
     start_time_sec = time.time()
 
@@ -91,6 +89,7 @@ def train(model, optimizer, loss_fn, train_dl, val_dl, epochs=20):
 
             # Generate a mask for the input
             m = generate_mask(sequences, sequence_lengths=lengths)
+            # print(m)
 
             probabilities = model(sequences, m, lengths)
             out = probabilities.squeeze(2).type(torch.float64)
@@ -102,8 +101,11 @@ def train(model, optimizer, loss_fn, train_dl, val_dl, epochs=20):
             optimizer.step()
 
             train_loss += loss.data.item() * len(cdrs)
-            num_train_correct += (out.detach().apply_(lambda x: 0. if x < Treshold else 1.) == lbls).sum().item()
-            num_train_examples += len(cdrs)
+            out = out.detach().apply_(lambda x: 0. if x < Treshold else 1.)
+            for o, l in zip(out, lbls):
+                num_train_correct += (o == l).sum().item()
+
+            num_train_examples += len(cdrs) * PARAPRED_MAX_LEN
 
         train_acc = num_train_correct / num_train_examples
         train_loss = train_loss / len(train_dl.dataset)
@@ -128,8 +130,11 @@ def train(model, optimizer, loss_fn, train_dl, val_dl, epochs=20):
             loss = loss_fn(out, lbls)
 
             val_loss += loss.data.item() * len(cdrs)
-            num_val_correct += (out.detach().apply_(lambda x: 0. if x < Treshold else 1.) == lbls).sum().item()
-            num_val_examples += len(cdrs)
+            out = out.detach().apply_(lambda x: 0. if x < Treshold else 1.)
+            for o, l in zip(out, lbls):
+                num_val_correct += (o == l).sum().item()
+
+            num_val_examples += len(cdrs) * PARAPRED_MAX_LEN
 
         val_acc = num_val_correct / num_val_examples
         val_loss = val_loss / len(val_dl.dataset)
@@ -143,7 +148,6 @@ def train(model, optimizer, loss_fn, train_dl, val_dl, epochs=20):
         history['val_acc'].append(val_acc)
 
     # END OF TRAINING LOOP
-
     end_time_sec = time.time()
     total_time_sec = end_time_sec - start_time_sec
     time_per_epoch_sec = total_time_sec / epochs
@@ -170,9 +174,10 @@ def evaluate(model, loader):
         probabilities = model(sequences, m, lengths)
         out = probabilities.squeeze(2).type(torch.float64)
 
-        # num_val_correct += (torch.max(out, 1)[1] == lbls).sum().item()
+        compute_classifier_metrics(out, lbls)
+
+        num_val_correct += (out.detach().apply_(lambda x: 0. if x < Treshold else 1.) == lbls).sum().item()
         num_val_examples += len(cdrs)
 
     val_acc = num_val_correct / num_val_examples
-
     print('val acc: %5.2f' % val_acc)

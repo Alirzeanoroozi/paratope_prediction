@@ -15,6 +15,26 @@ aa_s = "CSTPAGNDEQHRKMILVFYWX"  # X for unknown
 NUM_FEATURES = len(aa_s) + 7  # one-hot + extra features
 
 
+def get_structure_from_pdb(pdb_file):
+    parser = PDBParser()
+    return parser.get_structure("", pdb_file)
+
+
+def extract_cdrs(chain, sequence, chain_type):
+    cdrs = {}
+    pdb_residues = chain.get_unpacked_list()
+    seq_residues = sorted(sequence)
+
+    for res_id in seq_residues:
+        cdr = residue_in_cdr(res_id, chain_type)
+        if cdr is not None:
+            pdb_res = find_pdb_residue(pdb_residues, res_id)
+            cdr_seq = cdrs.get(cdr, [])
+            cdr_seq.append((sequence[res_id], pdb_res, res_id))
+            cdrs[cdr] = cdr_seq
+    return cdrs
+
+
 def residue_in_cdr(res_id, chain_type):
     cdr_names = [chain_type + str(e) for e in [1, 2, 3]]  # L1-3 or H1-3
     # Loop over all CDR definitions to see if the residue is in one.
@@ -32,21 +52,6 @@ def find_pdb_residue(pdb_residues, residue_id):
         if (pdb_res.id[1], pdb_res.id[2].strip()) == residue_id:
             return pdb_res
     return None
-
-
-def extract_cdrs(chain, sequence, chain_type):
-    cdrs = {}
-    pdb_residues = chain.get_unpacked_list()
-    seq_residues = sorted(sequence)
-
-    for res_id in seq_residues:
-        cdr = residue_in_cdr(res_id, chain_type)
-        if cdr is not None:
-            pdb_res = find_pdb_residue(pdb_residues, res_id)
-            cdr_seq = cdrs.get(cdr, [])
-            cdr_seq.append((sequence[res_id], pdb_res, res_id))
-            cdrs[cdr] = cdr_seq
-    return cdrs
 
 
 def extract_cdrs_from_structure(chain, chain_type):
@@ -186,11 +191,6 @@ def save_chain(chain, file_name):
     struct.add(model)
 
     save_structure(struct, file_name)
-
-
-def get_structure_from_pdb(pdb_file):
-    parser = PDBParser()
-    return parser.get_structure("", pdb_file)
 
 
 def extended_epitope(ag_chain, ab_h_chain, ab_l_chain, cutoff=10.0):

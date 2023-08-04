@@ -18,7 +18,7 @@ def encode_parapred(sequence: str, max_length: int = None) -> torch.Tensor:
     if max_length is None:
         encoded = torch.zeros((seqlen, NUM_FEATURES))
     else:
-        encoded = torch.zeros((max_length, NUM_AMINOS + NUM_MEILER))
+        encoded = torch.zeros((max_length, NUM_FEATURES))
 
     for i, c in enumerate(sequence):
         encoded[i][PARAPRED_TO_POS.get(c, NUM_AMINOS)] = 1
@@ -53,6 +53,6 @@ def encode_batch(batch_of_sequences: List[str], max_length: int = None) -> (torc
     # Parapred first applies a CNN to an input tensor.
     # CNNs in PyTorch expect a tensor T of (Bsz x n_features x seqlen)
     # Hence the permutation
-    encoded_seqs = encoded_seqs.permute(0, 2, 1)
+    # encoded_seqs = encoded_seqs.permute(0, 2, 1)
 
     return encoded_seqs, torch.as_tensor(seq_lens)

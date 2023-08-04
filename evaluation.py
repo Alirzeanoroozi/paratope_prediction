@@ -1,11 +1,148 @@
+from sklearn.metrics import roc_curve, roc_auc_score, confusion_matrix, matthews_corrcoef
 from sklearn.model_selection import KFold
 import numpy as np
 import pickle
 import torch
 from torch import optim, nn
 from dataloader import ABDataset, ABloader
-from dev_runner import evaluate, compute_classifier_metrics
 from pytorch_model import train
+
+
+def youden_j_stat(fpr, tpr, thresholds):
+    j_ordered = sorted(zip(tpr - fpr, thresholds))
+    return j_ordered[-1][1]
+
+
+def compute_classifier_metrics(labels, probs):
+    matrices = []
+    aucs = []
+    mcorrs = []
+    jstats = []
+
+    for l, p in zip(labels, probs):
+        jstats.append(youden_j_stat(*roc_curve(l, p)))
+
+    jstat_scores = np.array(jstats)
+    jstat = np.mean(jstat_scores)
+    jstat_err = 2 * np.std(jstat_scores)
+
+    threshold = jstat
+
+    print("Youden's J statistic = {} +/- {}. Using it as threshold.".format(jstat, jstat_err))
+
+    for l, p in zip(labels, probs):
+        aucs.append(roc_auc_score(l, p))
+        l_pred = (p > threshold).astype(int)
+        matrices.append(confusion_matrix(l, l_pred))
+        mcorrs.append(matthews_corrcoef(l, l_pred))
+
+    matrices = np.stack(matrices)
+    mean_conf = np.mean(matrices, axis=0)
+    errs_conf = 2 * np.std(matrices, axis=0)
+
+    tps = matrices[:, 1, 1]
+    fns = matrices[:, 1, 0]
+    fps = matrices[:, 0, 1]
+
+    recalls = tps / (tps + fns)
+    precisions = tps / (tps + fps)
+
+    rec = np.mean(recalls)
+    rec_err = 2 * np.std(recalls)
+    prec = np.mean(precisions)
+    prec_err = 2 * np.std(precisions)
+
+    fscores = 2 * precisions * recalls / (precisions + recalls)
+    fsc = np.mean(fscores)
+    fsc_err = 2 * np.std(fscores)
+
+    auc_scores = np.array(aucs)
+    auc = np.mean(auc_scores)
+    auc_err = 2 * np.std(auc_scores)
+
+    mcorr_scores = np.array(mcorrs)
+    mcorr = np.mean(mcorr_scores)
+    mcorr_err = 2 * np.std(mcorr_scores)
+
+    print("Mean confusion matrix and error")
+    print(mean_conf)
+    print(errs_conf)
+
+    print("Recall = {} +/- {}".format(rec, rec_err))
+    print("Precision = {} +/- {}".format(prec, prec_err))
+    print("F-score = {} +/- {}".format(fsc, fsc_err))
+    print("ROC AUC = {} +/- {}".format(auc, auc_err))
+    print("MCC = {} +/- {}".format(mcorr, mcorr_err))
+
+
+def flatten_with_lengths(matrix, lengths):
+    seqs = []
+    for i, example in enumerate(matrix):
+        seq = example[:lengths[i]]
+        seqs.append(seq)
+    return np.concatenate(seqs)
+
+
+
+
+
+def process_cv_results(cv_result_folder, abip_result_folder, cv_num_iters=10):
+    for i, loop in enumerate(["H1", "H2", "H3", "L1", "L2", "L3"]):
+        print("Classifier metrics for loop type", loop)
+        labels, probs = open_crossval_results(cv_result_folder, cv_num_iters, i)
+        compute_classifier_metrics(labels, probs)
+
+    # Plot PR curves
+    print("Plotting PR curves")
+    labels, probs = open_crossval_results(cv_result_folder, cv_num_iters)
+    labels_abip, probs_abip = open_crossval_results(abip_result_folder, 10)
+
+    fig = plot_pr_curve(labels, probs, colours=("#0072CF", "#68ACE5"),
+                        label="Parapred")
+    fig = plot_pr_curve(labels_abip, probs_abip, colours=("#D6083B", "#EB99A9"),
+                        label="Parapred using ABiP data", plot_fig=fig)
+    fig = plot_abip_pr(fig)
+    fig.savefig("pr.eps")
+
+    # Computing overall classifier metrics
+    print("Computing classifier metrics")
+    compute_classifier_metrics(labels, probs)
+
+
+def plot_dataset_fraction_results(results):
+    print("Plotting PR curves")
+    colours = [("#0072CF", "#68ACE5"),
+               ("#EA7125", "#F3BD48"),
+               ("#55A51C", "#AAB300"),
+               ("#D6083B", "#EB99A9")]
+
+    fig = None
+    for i, (file, descr) in enumerate(results):
+        labels, probs = open_crossval_results(file, 10)
+        fig = plot_pr_curve(labels, probs, colours=colours[i], plot_fig=fig, label="Parapred ({})".format(descr))
+
+    fig.savefig("fractions-pr.eps")
+
+
+def show_binding_profiles(dataset, run):
+    labels, probs = open_crossval_results(run, flatten_by_lengths=False)
+    labels = labels[0]  # Labels are constant, any of the 10 runs would do
+    probs = np.stack(probs).mean(axis=0)  # Mean binding probability across runs
+
+    contact = binding_profile(dataset, labels)
+    print("Contact per-residue binding profile:")
+    total = sum(list(contact.values()))
+    contact = {k: v / total for k, v in contact.items()}
+    print(contact)
+
+    parapred = binding_profile(dataset, probs)
+    print("Model's predictions' per-residue binding profile:")
+    total = sum(list(parapred.values()))
+    parapred = {k: v / total for k, v in parapred.items()}
+    print(parapred)
+
+    plot_binding_profiles(contact, parapred)
+
 
 
 def false_neg(y_true, y_pred):
@@ -16,70 +153,8 @@ def false_pos(y_true, y_pred):
     return torch.squeeze(torch.clamp(torch.round(y_pred) - y_true, 0.0, 1.0), dim=-1)
 
 
-def kfold_cv_eval(model_func, dataset, output_file="crossval-data.p", weights_template="weights-fold-{}.h5", seed=0):
-    cdrs, lbls, masks = dataset["cdrs"], dataset["lbls"], dataset["masks"]
-    kf = KFold(n_splits=10, random_state=seed, shuffle=True)
-
-    all_lbls = []
-    all_probs = []
-    all_masks = []
-
-    num_structures = int(len(cdrs) / 6)
-    for i, (train_ids, test_ids) in enumerate(kf.split(np.arange(num_structures))):
-        print("Fold: ", i + 1)
-
-        train_idx = structure_ids_to_selection_mask(train_ids, num_structures)
-        test_idx = structure_ids_to_selection_mask(test_ids, num_structures)
-
-        cdrs_train, lbls_train, mask_train = cdrs[train_idx], lbls[train_idx], masks[train_idx]
-        cdrs_test, lbls_test, mask_test = cdrs[test_idx], lbls[test_idx], masks[test_idx]
-
-        train_data = ABDataset(cdrs_train, mask_train, lbls_train)
-        test_data = ABDataset(cdrs_test, mask_test, lbls_test)
-
-        train_dataloader, test_dataloader = ABloader(train_data, test_data)
-
-        model = model_func()
-        optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
-        loss_function = nn.BCELoss()
-
-        train(model,
-              optimizer=optimizer,
-              loss_fn=loss_function,
-              train_dl=train_dataloader,
-              val_dl=test_dataloader)
-
-        torch.save(model.state_dict(), "precomputed/sabdab.pth")
-
-        probs_test = evaluate(model, test_data)
-
-        test_seq_lens = np.sum(np.squeeze(mask_test), axis=1)
-        probs_flat = flatten_with_lengths(probs_test, test_seq_lens)
-        lbls_flat = flatten_with_lengths(lbls_test, test_seq_lens)
-
-        compute_classifier_metrics([lbls_flat], [probs_flat])
-
-        model.save_weights(weights_template.format(i))
-
-        probs_test = model.predict([cdrs_test, np.squeeze(mask_test)])
-        all_lbls.append(lbls_test)
-        all_probs.append(probs_test)
-        all_masks.append(mask_test)
-
-    lbl_mat = np.concatenate(all_lbls)
-    prob_mat = np.concatenate(all_probs)
-    mask_mat = np.concatenate(all_masks)
-
-    with open(output_file, "wb") as f:
-        pickle.dump((lbl_mat, prob_mat, mask_mat), f)
 
 
-def structure_ids_to_selection_mask(idx, num_structures):
-    mask = np.zeros((num_structures * 6, ), dtype=np.bool)
-    offset = idx * 6
-    for i in range(6):
-        mask[offset + i] = True
-    return mask
 
 
 def open_crossval_results(folder="runs/cv-ab-seq", num_results=10,

@@ -1,6 +1,25 @@
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
-from torchvision.transforms import ToTensor
+
+
+def structure_ids_to_selection_mask(idx, num_structures):
+    mask = np.zeros((num_structures * 6, ), dtype=np.bool)
+    offset = idx * 6
+    for i in range(6):
+        mask[offset + i] = True
+    return mask
+
+
+def cv_train_test_split(dataset, train_ids, test_ids, num_structures):
+    cdrs, lbls = dataset["cdrs"], dataset["lbls"]
+
+    train_idx = structure_ids_to_selection_mask(train_ids, num_structures)
+    test_idx = structure_ids_to_selection_mask(test_ids, num_structures)
+
+    cdrs_train, lbls_train = cdrs[train_idx], lbls[train_idx]
+    cdrs_test, lbls_test = cdrs[test_idx], lbls[test_idx]
+
+    return cdrs_test, cdrs_train, lbls_test, lbls_train
 
 
 def train_test_split(dataset):
