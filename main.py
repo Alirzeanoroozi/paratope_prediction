@@ -1,5 +1,4 @@
 from os import makedirs
-
 import numpy as np
 import torch
 from sklearn.model_selection import KFold
@@ -86,7 +85,7 @@ def single_run(dataset_file):
     train_dataloader, test_dataloader = ABloader(train_data, test_data)
 
     model = Parapred()
-    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=0.01)
     loss_function = nn.BCELoss()
 
     train(model,
@@ -120,46 +119,19 @@ def predict(cdrs):
 if __name__ == "__main__":
     single_run("data/dataset.csv")
 
-    dataset = open_dataset("data/dataset.csv")
-
-    cdrs_test, cdrs_train, lbls_test, lbls_train = train_test_split(dataset)
-
-    train_data = ABDataset(cdrs_train, lbls_train)
-    test_data = ABDataset(cdrs_test, lbls_test)
-
-    print(train_data[0])
-    print(train_data[1])
-
-    print(predict(['TATSSLSSSYLH']))
-
-    for a, b in zip(train_data[1][1], predict(['TATSSLSSSYLH'])[0]):
-        print(float(a), "  ", round(float(b), 3))
-
-    # print(predict(["YCQHFYIYPYTFG", "GVNTFGLY", "YPGRGT"]))
-
-
-# tensor([[0.1975, 0.2226, 0.3391, 0.4048, 0.4451, 0.4627, 0.4134, 0.4476, 0.3792,
-#          0.4062, 0.3191, 0.2645, 0.1421, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
-#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
-#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359],
-#         [0.1036, 0.1938, 0.2567, 0.2908, 0.2975, 0.2317, 0.2661, 0.2269, 0.0359,
-#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
-#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
-#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359],
-#         [0.1795, 0.1900, 0.2157, 0.3055, 0.2101, 0.1784, 0.0359, 0.0359, 0.0359,
-#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
-#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359, 0.0359,
-#          0.0359, 0.0359, 0.0359, 0.0359, 0.0359]], dtype=torch.float64)
-
-# tensor([[0.0685, 0.0134, 0.0561, 0.0507, 0.9299, 0.9437, 0.8590, 0.9153, 0.1119,
-#          0.7351, 0.0098, 0.0064, 0.0034, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
-#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
-#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775],
-#         [0.1212, 0.3969, 0.8606, 0.8883, 0.9034, 0.7356, 0.1559, 0.8118, 0.4775,
-#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
-#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
-#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775],
-#         [0.2265, 0.0040, 0.0916, 0.4299, 0.3625, 0.3892, 0.4775, 0.4775, 0.4775,
-#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
-#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775, 0.4775,
-#          0.4775, 0.4775, 0.4775, 0.4775, 0.4775]], dtype=torch.float64)
+    # dataset = open_dataset("data/dataset.csv")
+    #
+    # cdrs_test, cdrs_train, lbls_test, lbls_train = train_test_split(dataset)
+    #
+    # train_data = ABDataset(cdrs_train, lbls_train)
+    # test_data = ABDataset(cdrs_test, lbls_test)
+    #
+    # print(train_data[0])
+    # print(train_data[1])
+    #
+    # print(predict(['TATSSLSSSYLH']))
+    #
+    # for a, b in zip(train_data[1][1], predict(['TATSSLSSSYLH'])[0]):
+    #     print(float(a), "  ", round(float(b), 3))
+    #
+    # # print(predict(["YCQHFYIYPYTFG", "GVNTFGLY", "YPGRGT"]))
